@@ -1,0 +1,13 @@
+<RCC>
+    <qresource prefix="/shaders">
+        <file>colors.fs</file>
+        <file>colors.vs</file>
+        <file>light_cube.vs</file>
+        <file>light_cube.fs</file>
+        <file>lightedsphere.vs</file>
+        <file>lightedsphere.fs</file>
+    </qresource>
+    <qresource prefix="/img">
+        <file>apple.png</file>
+    </qresource>
+</RCC>
