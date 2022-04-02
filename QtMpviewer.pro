@@ -36,3 +36,24 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
     mpviewer.qrc
+
+win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../../../usr/local/lib/release/ -lFileParsers
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../../../usr/local/lib/debug/ -lFileParsers
+else:unix: LIBS += -L$$PWD/../../../../usr/local/lib/ -lFileParsers
+
+INCLUDEPATH += $$PWD/../../../../usr/local/include/FileParsers
+DEPENDPATH += $$PWD/../../../../usr/local/include/FileParsers
+
+win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../../../usr/local/lib/release/ -lGraphMol
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../../../usr/local/lib/debug/ -lGraphMol
+else:unix: LIBS += -L$$PWD/../../../../usr/local/lib/ -lGraphMol
+
+INCLUDEPATH += $$PWD/../../../../usr/local/include/GraphMol
+DEPENDPATH += $$PWD/../../../../usr/local/include/GraphMol
+
+win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../../../usr/local/lib/release/ -lRDGeneral
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../../../usr/local/lib/debug/ -lRDGeneral
+else:unix: LIBS += -L$$PWD/../../../../usr/local/lib/ -lRDGeneral
+
+INCLUDEPATH += $$PWD/../../../../usr/local/include/RDGeneral
+DEPENDPATH += $$PWD/../../../../usr/local/include/RDGeneral

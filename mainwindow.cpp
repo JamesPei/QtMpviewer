@@ -13,10 +13,16 @@ MainWindow::~MainWindow(){
 
 
 void MainWindow::on_actionopen_triggered(){
-    QString fileName = QFileDialog::getOpenFileName(this);
+    fileName = QFileDialog::getOpenFileName(this);
     if (!fileName.isEmpty()){
         messagebox.setText(fileName+" opened");
         messagebox.exec();
     }
+
+
+}
+
+void MainWindow::on_openGLWidget_aboutToCompose(){
+
 }
 
