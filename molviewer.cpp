@@ -1,4 +1,4 @@
-#include "molviewer.h"
+﻿#include "molviewer.h"
 
 #include <QDebug>
 #include <QTimer>
@@ -22,6 +22,11 @@ MolViewer::MolViewer(QWidget *parent, string molfile) : QOpenGLWidget(parent), M
         update();
     });
     m_pTimer->start(40);
+
+//    connect(&mainwindow,
+//            &MainWindow::file_selected,
+//            this,
+//            &MolViewer::on_file_selected);
 }
 
 MolViewer::~MolViewer(){
@@ -35,6 +40,7 @@ void MolViewer::initializeGL(){
 
     createShader();
     glEnable(GL_DEPTH_TEST);
+
 }
 
 void MolViewer::resizeGL(int w, int h){
@@ -80,7 +86,6 @@ void MolViewer::paintGL(){
         float positions[atom_num];
         copy(position_radius.begin(), position_radius.end(), positions);
 
-
         vector<Sphere* > balls;
 
         // 构建原子信息
@@ -91,7 +96,7 @@ void MolViewer::paintGL(){
         Sphere fluorine(0, 0.32f, 8, 4, glm::vec3(0.0f, 0.0f, 0.0f), CYAN);
         Sphere big_atom(0, 0.36f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), GREY31);
 
-        for(int i=0; i<sizeof(positions)/sizeof(float); i+=4){
+        for(int i=0; i < sizeof(positions)/sizeof(float); i+=4){
             glm::vec3 pos = glm::vec3(positions[i],  positions[i+1],  positions[i+2]);
             int no = i/4;
             Sphere* ball;
@@ -148,12 +153,6 @@ void MolViewer::paintGL(){
 
     // be sure to activate shader when setting uniforms/drawing objects
     molShader.bind();
-    molShader.setUniformValue("objectColor", QVector3D(1.0f, 0.0f, 0.0f));
-    molShader.setUniformValue("lightColor", QVector3D(2.0f, 2.0f, 1.0f));
-
-    // light properties
-    molShader.setUniformValue("lightPos", lightPos);
-    molShader.setUniformValue("viewPos", QVector3D(20.0f, 0.5f, 0.5f));
 
     // view/projection transformations
     QMatrix4x4 projection;
@@ -162,16 +161,24 @@ void MolViewer::paintGL(){
     molShader.setUniformValue("projection", projection);
     molShader.setUniformValue("view", view);
 
-    // world transformation
-    QMatrix4x4 model;
-    molShader.setUniformValue("model", model);
+    int obj_index = 0;
+    for(auto vao:vaos){
+        glBindVertexArray(vao);
 
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, total_indexcount*3, GL_UNSIGNED_INT, (void*)0);
-}
+        // world transformation
+        QMatrix4x4 model;
+        molShader.setUniformValue("model", model);
 
-void MolViewer::paintEvent(QPaintEvent *event){
+        molShader.setUniformValue("objectColor", QVector3D(1.0f, 0.0f, 0.0f));
+        molShader.setUniformValue("lightColor", QVector3D(2.0f, 2.0f, 1.0f));
+        // light properties
+        molShader.setUniformValue("lightPos", lightPos);
+        molShader.setUniformValue("viewPos", QVector3D(20.0f, 0.5f, 0.5f));
 
+        glDrawElements(GL_TRIANGLES, total_indexcount*3, GL_UNSIGNED_INT, (void*)0);
+
+        obj_index+=1;
+    }
 }
 
 void MolViewer::keyPressEvent(QKeyEvent *event){
@@ -300,4 +307,8 @@ void MolViewer::build_GLobject(GraphicObject *object, int &total_vertexcount, in
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, false, stride*sizeof(float), (void*)(sizeof(float)*3));
     glEnableVertexAttribArray(1);
+}
+
+void MolViewer::on_file_selected(QString file_path){
+    cout << "file selected:" << file_path.toStdString() << endl;
 }

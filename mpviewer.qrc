@@ -7,7 +7,6 @@
         <file>lightedsphere.vs</file>
         <file>lightedsphere.fs</file>
     </qresource>
-    <qresource prefix="/img">
-        <file>apple.png</file>
-    </qresource>
+    <qresource prefix="/img"/>
+    <qresource prefix="/test"/>
 </RCC>
