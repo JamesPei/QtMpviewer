@@ -22,11 +22,6 @@ MolViewer::MolViewer(QWidget *parent, string molfile) : QOpenGLWidget(parent), M
         update();
     });
     m_pTimer->start(40);
-
-//    connect(&mainwindow,
-//            &MainWindow::file_selected,
-//            this,
-//            &MolViewer::on_file_selected);
 }
 
 MolViewer::~MolViewer(){
@@ -36,11 +31,12 @@ MolViewer::~MolViewer(){
 }
 
 void MolViewer::initializeGL(){
+    qDebug() << "initializeGL!" << molShader.log();
     this->initializeOpenGLFunctions();
 
     createShader();
     glEnable(GL_DEPTH_TEST);
-
+    molShader.bind();
 }
 
 void MolViewer::resizeGL(int w, int h){
@@ -48,7 +44,15 @@ void MolViewer::resizeGL(int w, int h){
 }
 
 void MolViewer::paintGL(){
-    if(!MolFilePath.empty()){
+    if(!MolFilePath.empty() && MolFilePath != recentFile){
+        for(const unsigned int vao:vaos){
+            glDeleteVertexArrays(1, &vao);
+        }
+        for(const unsigned int vbo:vbos){
+            glDeleteBuffers(1, &vbo);
+        }
+        glDeleteBuffers(1, &EBO);
+
         string suffix = MolFilePath.substr(MolFilePath.size()-4);
         MiniRDKit::RWMol* mol(nullptr);
         if(suffix == ".mol"){
@@ -64,7 +68,7 @@ void MolViewer::paintGL(){
         for(auto i = mol->beginConformers(); i != mol->endConformers(); ++i){   // 汇总原子位置
             MiniRDKit::POINT3D_VECT points = ((*i).get())->getPositions();
             for(auto j = points.begin(); j!=points.end(); ++j){
-                // cout << (*j).x << " ," << (*j).y << " ," << (*j).z << "\n";
+                // cout << (*j).x << " ," << (*j).y << " ," << (*j).z << "\n"
                 position_radius.push_back((*j).x);
                 position_radius.push_back((*j).y);
                 position_radius.push_back((*j).z);
@@ -87,13 +91,14 @@ void MolViewer::paintGL(){
         copy(position_radius.begin(), position_radius.end(), positions);
 
         vector<Sphere* > balls;
+        vector<Cylinder* > cylinders;
 
         // 构建原子信息
         Sphere hydrogen(0, 0.1f, 4, 2, glm::vec3(0.0f, 0.0f, 0.0f), GREEN);
-        Sphere carbon(0, 0.2f, 8, 4, glm::vec3(0.0f, 0.0f, 0.0f), RED);
-        Sphere nitrogen(0, 0.24f, 8, 4, glm::vec3(0.0f, 0.0f, 0.0f), GOLD1);
-        Sphere oxygen(0, 0.28f, 8, 4, glm::vec3(0.0f, 0.0f, 0.0f), BLUE);
-        Sphere fluorine(0, 0.32f, 8, 4, glm::vec3(0.0f, 0.0f, 0.0f), CYAN);
+        Sphere carbon(0, 0.2f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), RED);
+        Sphere nitrogen(0, 0.24f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), GOLD1);
+        Sphere oxygen(0, 0.28f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), BLUE);
+        Sphere fluorine(0, 0.32f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), CYAN);
         Sphere big_atom(0, 0.36f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), GREY31);
 
         for(int i=0; i < sizeof(positions)/sizeof(float); i+=4){
@@ -129,6 +134,18 @@ void MolViewer::paintGL(){
             balls.push_back(ball);
         }
 
+        // 构建键信息
+        for(auto bond = mol->beginBonds(); bond!=mol->endBonds(); ++bond){
+            // cout << (*bond)->getBeginAtomIdx() << "," << (*bond)->getEndAtomIdx() << "\n";
+            int start_atom_idx = (*bond)->getBeginAtomIdx();
+            int end_atom_idx = (*bond)->getEndAtomIdx();
+            glm::vec3 start_point = glm::vec3(positions[start_atom_idx*4],  positions[start_atom_idx*4+1],  positions[start_atom_idx*4+2]);
+            glm::vec3 end_point = glm::vec3(positions[end_atom_idx*4],  positions[end_atom_idx*4+1],  positions[end_atom_idx*4+2]);
+
+            Cylinder* cylinder = new Cylinder(end_point, start_point, 0.05,0.05,16,1, WRITE);
+            cylinders.push_back(cylinder);
+        }
+
         float system_center_x = 0.0f;
         float system_center_y = 0.0f;
         float system_center_z = 0.0f;
@@ -144,15 +161,18 @@ void MolViewer::paintGL(){
 
         system_center = QVector3D(system_center_x/balls.size(), system_center_y/balls.size(), system_center_z/balls.size());
         camera->front = QVector3D(system_center.x()-camera->position.x(), system_center.y()-camera->position.y(), system_center.z()-camera->position.z());
-    }
 
-    camera->processInput(0.5f);//speed
+        // 构建键
+        for(Cylinder* cylinder:cylinders){
+            build_GLobject(cylinder, total_vertexcount, total_indexcount);
+            objects.push_back(cylinder);
+        }
+
+        recentFile = MolFilePath;
+    }
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // be sure to activate shader when setting uniforms/drawing objects
-    molShader.bind();
 
     // view/projection transformations
     QMatrix4x4 projection;
@@ -169,7 +189,10 @@ void MolViewer::paintGL(){
         QMatrix4x4 model;
         molShader.setUniformValue("model", model);
 
-        molShader.setUniformValue("objectColor", QVector3D(1.0f, 0.0f, 0.0f));
+        GraphicObject* obj = objects[obj_index];
+        QVector3D object_color = glm2Qvector(obj->getColor());
+
+        molShader.setUniformValue("objectColor", object_color);
         molShader.setUniformValue("lightColor", QVector3D(2.0f, 2.0f, 1.0f));
         // light properties
         molShader.setUniformValue("lightPos", lightPos);
@@ -179,6 +202,7 @@ void MolViewer::paintGL(){
 
         obj_index+=1;
     }
+
 }
 
 void MolViewer::keyPressEvent(QKeyEvent *event){
@@ -220,6 +244,15 @@ void MolViewer::mouseMoveEvent(QMouseEvent *event){
 void MolViewer::wheelEvent(QWheelEvent *event){
     QPoint offset = event->angleDelta();
     camera->processMouseScroll(offset.y()/20.0f);
+}
+
+void MolViewer::setMolFilePath(string mol_file_path){
+    MolFilePath = mol_file_path;
+}
+
+QVector3D MolViewer::glm2Qvector(glm::vec3 vec){
+    QVector3D vector(vec.x, vec.y, vec.z);
+    return vector;
 }
 
 bool MolViewer::createShader(){
@@ -307,8 +340,4 @@ void MolViewer::build_GLobject(GraphicObject *object, int &total_vertexcount, in
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, false, stride*sizeof(float), (void*)(sizeof(float)*3));
     glEnableVertexAttribArray(1);
-}
-
-void MolViewer::on_file_selected(QString file_path){
-    cout << "file selected:" << file_path.toStdString() << endl;
 }

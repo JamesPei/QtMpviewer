@@ -13,9 +13,9 @@
 #include <FileParsers/FileParsers.h>
 #include <GraphMol/ROMol.h>
 
-#include "mainwindow.h"
 #include "camera.h"
 #include "sphere.h"
+#include "cylinder.h"
 #include "color_table.h"
 
 using namespace std;
@@ -23,8 +23,12 @@ using namespace std;
 class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
     Q_OBJECT
     public:
-        explicit MolViewer(QWidget *parent = nullptr, string molfile = "/home/peilei/github/QtMpviewer/benzene.mol2");
+        explicit MolViewer(QWidget *parent = nullptr, string molfile = "");
         ~MolViewer() Q_DECL_OVERRIDE;
+
+        void setMolFilePath(string mol_file_path);
+
+        QVector3D glm2Qvector(glm::vec3 vec);
 
     protected:
         void initializeGL()  Q_DECL_OVERRIDE;
@@ -43,13 +47,11 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
         uint loadTexture(const QString& path);
         void build_GLobject(GraphicObject* object, int& total_vertexcount, int& total_indexcount);
 
-    private slots:
-        void on_file_selected(QString file_path);
-
     private:
-//        MainWindow mainwindow;
         QOpenGLShaderProgram molShader;
         string MolFilePath;
+        string recentFile = "";
+        QFileDialog* fileOperator;
         MiniRDKit::RWMol* mol;
 
         QTimer* m_pTimer = nullptr;

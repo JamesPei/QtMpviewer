@@ -11,6 +11,7 @@ INCLUDEPATH += /usr/local/include/glm /usr/local/boost_1_73_0
 SOURCES += \
     GraphicObject.cpp \
     camera.cpp \
+    cylinder.cpp \
     main.cpp \
     mainwindow.cpp \
     molviewer.cpp \
@@ -21,6 +22,7 @@ HEADERS += \
     camera.h \
     color_table.h \
     config.h \
+    cylinder.h \
     mainwindow.h \
     molviewer.h \
     sphere.h

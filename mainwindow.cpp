@@ -5,12 +5,15 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow){
     ui->setupUi(this);
+    mainLayout = new QGridLayout;
+    ui->centralwidget->setLayout(mainLayout);
+    viewer = new MolViewer();
+    mainLayout->addWidget(viewer);
 }
 
 MainWindow::~MainWindow(){
     delete ui;
 }
-
 
 void MainWindow::on_actionopen_triggered(){
     QFileDialog fileOperator;
@@ -19,6 +22,5 @@ void MainWindow::on_actionopen_triggered(){
         messagebox.setText(fileName+" opened");
         messagebox.exec();
     }
-//    emit file_selected(fileName);
-
+    viewer->setMolFilePath(fileName.toStdString());
 }
