@@ -10,9 +10,12 @@ static QVector3D lightPos(5.0f, 0.0f, 5.0f);
 
 QVector3D system_center(0.0f, 0.0f, -1.0f);
 
+vector<Sphere* > balls_copy;
+
 int total_indexcount = 0;
 
-MolViewer::MolViewer(QWidget *parent, string molfile) : QOpenGLWidget(parent), MolFilePath(molfile){
+MolViewer::MolViewer(QWidget *parent, string molfile) :
+    QOpenGLWidget(parent), MolFilePath(molfile){
     camera = make_unique<Camera>(QVector3D(10.0f, 0.0f, 10.0f));
     m_bLeftPressed = false;
 
@@ -22,6 +25,8 @@ MolViewer::MolViewer(QWidget *parent, string molfile) : QOpenGLWidget(parent), M
         update();
     });
     m_pTimer->start(40);
+
+    global_projection.perspective(glm::radians(camera->zoom), this->width() / this->height(), 0.1f, 100.0f);
 }
 
 MolViewer::~MolViewer(){
@@ -169,6 +174,7 @@ void MolViewer::paintGL(){
         }
 
         recentFile = MolFilePath;
+        balls_copy = balls;
     }
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -244,6 +250,75 @@ void MolViewer::mouseMoveEvent(QMouseEvent *event){
 void MolViewer::wheelEvent(QWheelEvent *event){
     QPoint offset = event->angleDelta();
     camera->processMouseScroll(offset.y()/20.0f);
+}
+
+QVector4D MolViewer::ScreenCoordinate2_WorldCoordinate(float xpos, float ypos){
+    // 3d 正则化（normalised）坐标
+    float x = (2.0*xpos)/this->width() - 1.0f;
+    float y = 1.0f - (2.0f*ypos)/this->height();
+    float z = 1.0f;
+
+    // 4d homogeneous clip coordinate
+    QVector4D ray_clip = QVector4D(x, y, -1.0, 1.0);
+
+    // 4d eye coordinate
+
+    QVector4D ray_eye = global_projection.inverted()*ray_clip;
+    ray_eye = QVector4D(ray_eye.x(), ray_eye.y(), -1.0, 0.0);
+
+    // 4d world coordinates
+    QMatrix4x4 view = camera->getViewMatrix();
+    QVector4D ray_eye_2 = view.inverted()*ray_eye;
+    QVector4D ray_wor = QVector4D(ray_eye_2.x(), ray_eye_2.y(), ray_eye_2.z(), 1.0);
+    return ray_wor;
+}
+
+void MolViewer::ray_cating(double xpos, double ypos){
+    /*
+        *用于3D拾取(3D-picking)的ray-cating方法
+        *ray_wor为从摄像机视角出发到被点击的屏幕坐标的方向向量，通过判断该向量延长后是否与物体相交(例如通过与物体中心坐标的距离判断)，可以拾取物体
+        */
+    QVector4D ray_wor = ScreenCoordinate2_WorldCoordinate(xpos,ypos);
+
+    // camera.Front = glm::vec3(ray_wor.x, ray_wor.y, ray_wor.z);
+
+    float shortest_distance = 10000.0;
+    int selected_object = -1;
+    float selected_radius;
+    int selected_SectorCount;
+    int selected_StackCount;
+    glm::vec3 selected_position;
+
+    for(auto ball = balls_copy.begin(); ball != balls_copy.end(); ++ball){
+        glm::vec3 core = (*ball)->getPosition();
+
+        glm::vec3 pointer_vector = glm::normalize(glm::vec3(core.x-camera->position.x(), core.y-camera->position.y(), core.z-camera->position.z()));
+        glm::vec3 ray_vector = glm::normalize(glm::vec3(ray_wor.x(), ray_wor.y(), ray_wor.z()));
+
+        float distance = sqrt(pow((core.x-camera->position.x()), 2)+pow(core.y-camera->position.y(), 2)+pow((core.z-camera->position.z()), 2));
+        float radius = (*ball)->getRadius();
+        float angle = tan(radius/distance);
+
+        float angle2 = glm::angle(pointer_vector, ray_vector);  //ray_casting与物体中点的夹角
+        if(angle2 <= angle || (PI-angle2) <=angle){
+            int object_no = (*ball)->getNo();
+            if(distance < shortest_distance){
+                selected_object = object_no;
+                selected_radius = (*ball)->getRadius();
+                selected_SectorCount = (*ball)->getSectorCount();
+                selected_StackCount = (*ball)->getStackCount();
+                selected_position = (*ball)->getPosition();
+                shortest_distance = distance;
+            }
+        }
+    }
+
+    if(selected_object != -1){
+        Sphere* sphere = new Sphere(selected_object, selected_radius, selected_SectorCount, selected_StackCount, selected_position, WHITE);
+        cout << "select " << selected_object << endl;
+        objects.erase(objects.begin()+selected_object);
+        objects.insert(objects.begin()+selected_object, sphere);
+    }
 }
 
 void MolViewer::setMolFilePath(string mol_file_path){

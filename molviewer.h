@@ -13,6 +13,11 @@
 #include <FileParsers/FileParsers.h>
 #include <GraphMol/ROMol.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/vector_angle.hpp>
+
 #include "camera.h"
 #include "sphere.h"
 #include "cylinder.h"
@@ -41,6 +46,9 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
         void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
         void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
         void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
+
+        QVector4D ScreenCoordinate2_WorldCoordinate(float xpos, float ypos);
+        void ray_cating(double xpos, double ypos);
 
     private:
         bool createShader();
@@ -72,6 +80,9 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
         std::unique_ptr<Camera> camera;
         bool m_bLeftPressed;
         QPoint m_lastPos;
+
+        QMatrix4x4 global_projection;
+
 
         template<class T, class... Args>
         std::unique_ptr<T> make_unique(Args&&... args){
