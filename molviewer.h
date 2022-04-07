@@ -7,6 +7,7 @@
 #include <QOpenGLShaderProgram>
 #include <QFileDialog>
 #include <QString>
+#include <QtMath>
 
 #include <memory>
 #include <string>
@@ -35,6 +36,8 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
 
         QVector3D glm2Qvector(glm::vec3 vec);
 
+        void printMatrx(QMatrix4x4 matrix);
+
     protected:
         void initializeGL()  Q_DECL_OVERRIDE;
         void resizeGL(int w, int h) Q_DECL_OVERRIDE;
@@ -47,8 +50,8 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
         void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
         void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
 
-        QVector4D ScreenCoordinate2_WorldCoordinate(float xpos, float ypos);
-        void ray_cating(double xpos, double ypos);
+        QVector4D ScreenCoordinate2_WorldCoordinate(int xpos, int ypos);
+        void ray_cating(int xpos, int ypos);
 
     private:
         bool createShader();
@@ -64,6 +67,8 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
 
         QTimer* m_pTimer = nullptr;
         int     m_nTimeValue = 0;
+        qint64 last_LeftButton_click_time;
+        bool firstMouse = true;
 
         uint VAO, VBO, EBO;
         uint diffuseMap, specularMap;
@@ -76,13 +81,24 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
 
         vector<GraphicObject* > objects;
 
+        float camera_oginin_x = 10.0f;
+        float camera_oginin_y = 0.0f;
+        float camera_oginin_z = 10.0f;
+
+        float origin_xy_angle = 0;
+        float origin_xz_angle = qAtan(camera_oginin_z/camera_oginin_x);
+
         // camera
         std::unique_ptr<Camera> camera;
         bool m_bLeftPressed;
-        QPoint m_lastPos;
+        QPoint m_lastPos = QPoint(WIDTH/2, HEIGHT/2);
+        float step_length = 0.2f;       // 用于按键控制的步长
 
+        QMatrix4x4 projection;
         QMatrix4x4 global_projection;
+        QMatrix4x4 model;
 
+        QVector3D lightColor = QVector3D(2.0f, 2.0f, 1.0f);
 
         template<class T, class... Args>
         std::unique_ptr<T> make_unique(Args&&... args){

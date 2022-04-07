@@ -5,6 +5,8 @@
 #include <QKeyEvent>
 #include <QDateTime>
 
+//glm convert to QMatrix:https://stackoverflow.com/questions/36249982/opengl-and-qt-5-5-glmperspective-doesnt-work
+
 // lighting
 static QVector3D lightPos(5.0f, 0.0f, 5.0f);
 
@@ -16,18 +18,96 @@ int total_indexcount = 0;
 
 MolViewer::MolViewer(QWidget *parent, string molfile) :
     QOpenGLWidget(parent), MolFilePath(molfile){
-    camera = make_unique<Camera>(QVector3D(10.0f, 0.0f, 10.0f));
+    camera = make_unique<Camera>(QVector3D(camera_oginin_x, camera_oginin_y, camera_oginin_z), QVector3D(0.0f, 0.0f, -1.0f));
     m_bLeftPressed = false;
 
-    m_pTimer = new QTimer(this);
-    connect(m_pTimer, &QTimer::timeout, this, [=]{
-        m_nTimeValue += 1;
-        update();
-    });
-    m_pTimer->start(40);
+//    m_pTimer = new QTimer(this);
+//    connect(m_pTimer, &QTimer::timeout, this, [=]{
+//        m_nTimeValue += 1;
+//        update();
+//    });
+//    m_pTimer->start(40);
 
-    global_projection.perspective(glm::radians(camera->zoom), this->width() / this->height(), 0.1f, 100.0f);
+    glm::mat4 proj = glm::perspective(glm::radians(camera->zoom), WIDTH/HEIGHT, 0.1f, 100.0f);
+    global_projection = QMatrix4x4(glm::value_ptr(proj)).transposed();
+
+    // 必须先设置聚焦策略，否则无法响应键盘事件
+    setFocusPolicy(Qt::ClickFocus);
 }
+
+void MolViewer::setMolFilePath(string mol_file_path){
+    MolFilePath = mol_file_path;
+}
+
+QVector4D MolViewer::ScreenCoordinate2_WorldCoordinate(int xpos, int ypos){
+    // 3d 正则化（normalised）坐标
+    float x = (2.0*xpos)/this->width() - 1.0f;
+    float y = 1.0f - (2.0f*ypos)/this->height();
+    float z = 1.0f;
+
+    // 4d homogeneous clip coordinate
+    QVector4D ray_clip = QVector4D(x, y, -1.0, 1.0);
+//    printMatrx(global_projection);
+    // 4d eye coordinate
+    QVector4D ray_eye = global_projection.inverted()*ray_clip;
+    ray_eye = QVector4D(ray_eye.x(), ray_eye.y(), -1.0, 0.0);
+//    cout<< "ray_eye:" << ray_eye.x() << "," << ray_eye.y() << endl;
+
+    // 4d world coordinates
+    QMatrix4x4 view = camera->getViewMatrix();
+    QVector4D ray_eye_2 = view.inverted()*ray_eye;
+    QVector4D ray_wor = QVector4D(ray_eye_2.x(), ray_eye_2.y(), ray_eye_2.z(), 1.0);
+    return ray_wor;
+}
+
+void MolViewer::ray_cating(int xpos, int ypos){
+    /*
+     *用于3D拾取(3D-picking)的ray-cating方法
+     *ray_wor为从摄像机视角出发到被点击的屏幕坐标的方向向量，通过判断该向量延长后是否与物体相交(例如通过与物体中心坐标的距离判断)，可以拾取物体
+     */
+    QVector4D ray_wor = ScreenCoordinate2_WorldCoordinate(xpos,ypos);
+    // camera.Front = glm::vec3(ray_wor.x, ray_wor.y, ray_wor.z);
+
+    float shortest_distance = 10000.0;
+    int selected_object = -1;
+    float selected_radius;
+    int selected_SectorCount;
+    int selected_StackCount;
+
+    glm::vec3 selected_position;
+
+    for(auto ball = balls_copy.begin(); ball != balls_copy.end(); ++ball){
+        glm::vec3 core = (*ball)->getPosition();
+        glm::vec3 pointer_vector = glm::normalize(glm::vec3(core.x-camera->position.x(), core.y-camera->position.y(), core.z-camera->position.z()));
+        glm::vec3 ray_vector = glm::normalize(glm::vec3(ray_wor.x(), ray_wor.y(), ray_wor.z()));
+
+        float distance = qSqrt(qPow((core.x-camera->position.x()), 2)+qPow(core.y-camera->position.y(), 2)+qPow((core.z-camera->position.z()), 2));
+        float radius = (*ball)->getRadius();
+        float angle = qTan(radius/distance);
+
+        float angle2 = glm::angle(pointer_vector, ray_vector);  //ray_casting与物体中点的夹角
+        if(angle2 <= angle || (PI-angle2) <=angle){
+            int object_no = (*ball)->getNo();
+            if(distance < shortest_distance){
+                selected_object = object_no;
+                selected_radius = (*ball)->getRadius();
+                selected_SectorCount = (*ball)->getSectorCount();
+                selected_StackCount = (*ball)->getStackCount();
+                selected_position = (*ball)->getPosition();
+                shortest_distance = distance;
+            }
+        }
+    }
+
+    if(selected_object != -1){
+        Sphere* sphere = new Sphere(selected_object, selected_radius, selected_SectorCount, selected_StackCount, selected_position, WHITE);
+        cout << "select " << selected_object << endl;
+        objects.erase(objects.begin()+selected_object);
+        objects.insert(objects.begin()+selected_object, sphere);
+    }
+    update();
+}
+
 
 MolViewer::~MolViewer(){
     glDeleteVertexArrays(1, &VAO);
@@ -36,7 +116,6 @@ MolViewer::~MolViewer(){
 }
 
 void MolViewer::initializeGL(){
-    qDebug() << "initializeGL!" << molShader.log();
     this->initializeOpenGLFunctions();
 
     createShader();
@@ -106,7 +185,7 @@ void MolViewer::paintGL(){
         Sphere fluorine(0, 0.32f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), CYAN);
         Sphere big_atom(0, 0.36f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), GREY31);
 
-        for(int i=0; i < sizeof(positions)/sizeof(float); i+=4){
+        for(int i=0; i<sizeof(positions)/sizeof(float); i+=4){
             glm::vec3 pos = glm::vec3(positions[i],  positions[i+1],  positions[i+2]);
             int no = i/4;
             Sphere* ball;
@@ -181,8 +260,9 @@ void MolViewer::paintGL(){
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // view/projection transformations
-    QMatrix4x4 projection;
-    projection.perspective(camera->zoom, 1.0f * width() / height(), 0.1f, 100.0f);
+    projection = QMatrix4x4(glm::value_ptr(glm::perspective(glm::radians(camera->zoom), WIDTH/HEIGHT, 0.1f, 100.0f))).transposed();
+    global_projection = projection;
+
     QMatrix4x4 view = camera->getViewMatrix();
     molShader.setUniformValue("projection", projection);
     molShader.setUniformValue("view", view);
@@ -192,29 +272,34 @@ void MolViewer::paintGL(){
         glBindVertexArray(vao);
 
         // world transformation
-        QMatrix4x4 model;
+        glm::mat4 tmp_model = glm::mat4(1.0f);
+        float angle = 0.0f;
+        tmp_model = glm::rotate(tmp_model, glm::radians(angle), glm::vec3(1.0f, 0.0f, 0.0f));
+        model = QMatrix4x4(glm::value_ptr(tmp_model)).transposed();
         molShader.setUniformValue("model", model);
 
         GraphicObject* obj = objects[obj_index];
         QVector3D object_color = glm2Qvector(obj->getColor());
 
         molShader.setUniformValue("objectColor", object_color);
-        molShader.setUniformValue("lightColor", QVector3D(2.0f, 2.0f, 1.0f));
+        molShader.setUniformValue("lightColor", lightColor);
         // light properties
         molShader.setUniformValue("lightPos", lightPos);
-        molShader.setUniformValue("viewPos", QVector3D(20.0f, 0.5f, 0.5f));
+        molShader.setUniformValue("viewPos", camera->position);
 
         glDrawElements(GL_TRIANGLES, total_indexcount*3, GL_UNSIGNED_INT, (void*)0);
 
         obj_index+=1;
     }
-
 }
 
 void MolViewer::keyPressEvent(QKeyEvent *event){
     int key = event->key();
-    if (key >= 0 && key < 1024)
+    if (key >= 0 && key < 1024){
         camera->keys[key] = true;
+        camera->processInput(step_length);
+    }
+    update();
 }
 
 void MolViewer::keyReleaseEvent(QKeyEvent *event){
@@ -226,103 +311,57 @@ void MolViewer::keyReleaseEvent(QKeyEvent *event){
 void MolViewer::mousePressEvent(QMouseEvent *event){
     if(event->button() == Qt::LeftButton){
         m_bLeftPressed = true;
-        m_lastPos = event->pos();
+        m_lastPos = event->pos();                  // 2d viewport 坐标
+        last_LeftButton_click_time = QDateTime::currentMSecsSinceEpoch();
+        ray_cating(m_lastPos.x(), m_lastPos.y());
+    }else if(event->button() == Qt::RightButton){
+
+    }else if(event->button() == Qt::MidButton){
+
     }
 }
 
 void MolViewer::mouseReleaseEvent(QMouseEvent *event){
     Q_UNUSED(event);
-
-    m_bLeftPressed = false;
+    if(event->button() == Qt::LeftButton){
+        m_bLeftPressed = false;
+    }
 }
 
 void MolViewer::mouseMoveEvent(QMouseEvent *event){
     int xpos = event->pos().x();
     int ypos = event->pos().y();
 
+    if(firstMouse){
+        m_lastPos = event->pos();
+        firstMouse = false;
+    }
+
     int xoffset = xpos - m_lastPos.x();
-    int yoffset = m_lastPos.y() - ypos;
+    int yoffset = ypos - m_lastPos.y();
     m_lastPos = event->pos();
 
-    camera->processMouseMovement(xoffset, yoffset);
+    float radius = qSqrt(qPow(camera_oginin_x-system_center.x(), 2)+pow(camera_oginin_y-system_center.y(), 2)+pow((camera_oginin_z-system_center.z()), 2));
+
+    float xz_angle = (2*PI)*xoffset/WIDTH/2;
+    float xy_angle = (2*PI)*yoffset/HEIGHT/2;
+
+    origin_xy_angle += xy_angle;
+    origin_xz_angle += xz_angle;
+
+    camera->position.setX(radius*qCos(origin_xy_angle)*qCos(origin_xz_angle));
+    camera->position.setY(radius*qSin(origin_xy_angle));
+    camera->position.setZ(radius*qCos(origin_xy_angle)*qSin(origin_xz_angle));
+
+    camera->front = QVector3D(system_center.x()-camera->position.x(), system_center.y()-camera->position.y(), system_center.z()-camera->position.z());
+    update();
 }
 
 void MolViewer::wheelEvent(QWheelEvent *event){
+    cout << "wheelEvent" << endl;
     QPoint offset = event->angleDelta();
     camera->processMouseScroll(offset.y()/20.0f);
-}
-
-QVector4D MolViewer::ScreenCoordinate2_WorldCoordinate(float xpos, float ypos){
-    // 3d 正则化（normalised）坐标
-    float x = (2.0*xpos)/this->width() - 1.0f;
-    float y = 1.0f - (2.0f*ypos)/this->height();
-    float z = 1.0f;
-
-    // 4d homogeneous clip coordinate
-    QVector4D ray_clip = QVector4D(x, y, -1.0, 1.0);
-
-    // 4d eye coordinate
-
-    QVector4D ray_eye = global_projection.inverted()*ray_clip;
-    ray_eye = QVector4D(ray_eye.x(), ray_eye.y(), -1.0, 0.0);
-
-    // 4d world coordinates
-    QMatrix4x4 view = camera->getViewMatrix();
-    QVector4D ray_eye_2 = view.inverted()*ray_eye;
-    QVector4D ray_wor = QVector4D(ray_eye_2.x(), ray_eye_2.y(), ray_eye_2.z(), 1.0);
-    return ray_wor;
-}
-
-void MolViewer::ray_cating(double xpos, double ypos){
-    /*
-        *用于3D拾取(3D-picking)的ray-cating方法
-        *ray_wor为从摄像机视角出发到被点击的屏幕坐标的方向向量，通过判断该向量延长后是否与物体相交(例如通过与物体中心坐标的距离判断)，可以拾取物体
-        */
-    QVector4D ray_wor = ScreenCoordinate2_WorldCoordinate(xpos,ypos);
-
-    // camera.Front = glm::vec3(ray_wor.x, ray_wor.y, ray_wor.z);
-
-    float shortest_distance = 10000.0;
-    int selected_object = -1;
-    float selected_radius;
-    int selected_SectorCount;
-    int selected_StackCount;
-    glm::vec3 selected_position;
-
-    for(auto ball = balls_copy.begin(); ball != balls_copy.end(); ++ball){
-        glm::vec3 core = (*ball)->getPosition();
-
-        glm::vec3 pointer_vector = glm::normalize(glm::vec3(core.x-camera->position.x(), core.y-camera->position.y(), core.z-camera->position.z()));
-        glm::vec3 ray_vector = glm::normalize(glm::vec3(ray_wor.x(), ray_wor.y(), ray_wor.z()));
-
-        float distance = sqrt(pow((core.x-camera->position.x()), 2)+pow(core.y-camera->position.y(), 2)+pow((core.z-camera->position.z()), 2));
-        float radius = (*ball)->getRadius();
-        float angle = tan(radius/distance);
-
-        float angle2 = glm::angle(pointer_vector, ray_vector);  //ray_casting与物体中点的夹角
-        if(angle2 <= angle || (PI-angle2) <=angle){
-            int object_no = (*ball)->getNo();
-            if(distance < shortest_distance){
-                selected_object = object_no;
-                selected_radius = (*ball)->getRadius();
-                selected_SectorCount = (*ball)->getSectorCount();
-                selected_StackCount = (*ball)->getStackCount();
-                selected_position = (*ball)->getPosition();
-                shortest_distance = distance;
-            }
-        }
-    }
-
-    if(selected_object != -1){
-        Sphere* sphere = new Sphere(selected_object, selected_radius, selected_SectorCount, selected_StackCount, selected_position, WHITE);
-        cout << "select " << selected_object << endl;
-        objects.erase(objects.begin()+selected_object);
-        objects.insert(objects.begin()+selected_object, sphere);
-    }
-}
-
-void MolViewer::setMolFilePath(string mol_file_path){
-    MolFilePath = mol_file_path;
+    update();
 }
 
 QVector3D MolViewer::glm2Qvector(glm::vec3 vec){
@@ -415,4 +454,10 @@ void MolViewer::build_GLobject(GraphicObject *object, int &total_vertexcount, in
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, false, stride*sizeof(float), (void*)(sizeof(float)*3));
     glEnableVertexAttribArray(1);
+}
+
+void MolViewer::printMatrx(const QMatrix4x4 matrix){
+    cout << "print matrix:" << "\n";
+    for(int i=0; i<4; i++)
+        cout << matrix.row(i).x() << "," << matrix.row(i).y() << "," <<matrix.row(i).z() << "," <<matrix.row(i).w() << "," <<endl;
 }

@@ -8,6 +8,7 @@
 #include <FileParsers/FileParsers.h>
 #include <GraphMol/ROMol.h>
 
+#include "config.h"
 #include "molviewer.h"
 
 QT_BEGIN_NAMESPACE

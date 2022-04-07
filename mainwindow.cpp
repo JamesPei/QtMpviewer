@@ -8,6 +8,7 @@ MainWindow::MainWindow(QWidget *parent)
     mainLayout = new QGridLayout;
     ui->centralwidget->setLayout(mainLayout);
     viewer = new MolViewer();
+    viewer->resize(WIDTH, HEIGHT);
     mainLayout->addWidget(viewer);
 }
 
@@ -23,4 +24,5 @@ void MainWindow::on_actionopen_triggered(){
         messagebox.exec();
     }
     viewer->setMolFilePath(fileName.toStdString());
+    viewer->update();
 }
