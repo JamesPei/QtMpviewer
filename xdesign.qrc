@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/shaders">
+        <file>lightedsphere.fs</file>
+        <file>lightedsphere.vs</file>
+    </qresource>
+</RCC>

@@ -28,11 +28,14 @@ signals:
 private slots:
     void on_actionopen_triggered();
 
+    void on_actionadd_triggered();
+
 private:
     Ui::MainWindow *ui;
     QGridLayout* mainLayout;
     QMessageBox messagebox;
     QString fileName;
     MolViewer* viewer;
+    QString home = getenv("HOME");
 };
 #endif // MAINWINDOW_H

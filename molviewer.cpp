@@ -8,7 +8,7 @@
 //glm convert to QMatrix:https://stackoverflow.com/questions/36249982/opengl-and-qt-5-5-glmperspective-doesnt-work
 
 // lighting
-static QVector3D lightPos(5.0f, 0.0f, 5.0f);
+static QVector3D lightPos(5.0f, 5.0f, 5.0f);
 
 QVector3D system_center(0.0f, 0.0f, -1.0f);
 
@@ -21,15 +21,8 @@ MolViewer::MolViewer(QWidget *parent, string molfile) :
     camera = make_unique<Camera>(QVector3D(camera_oginin_x, camera_oginin_y, camera_oginin_z), QVector3D(0.0f, 0.0f, -1.0f));
     m_bLeftPressed = false;
 
-//    m_pTimer = new QTimer(this);
-//    connect(m_pTimer, &QTimer::timeout, this, [=]{
-//        m_nTimeValue += 1;
-//        update();
-//    });
-//    m_pTimer->start(40);
-
     glm::mat4 proj = glm::perspective(glm::radians(camera->zoom), WIDTH/HEIGHT, 0.1f, 100.0f);
-    global_projection = QMatrix4x4(glm::value_ptr(proj)).transposed();
+    global_projection = glm2QMatrix(proj);
 
     // 必须先设置聚焦策略，否则无法响应键盘事件
     setFocusPolicy(Qt::ClickFocus);
@@ -37,6 +30,7 @@ MolViewer::MolViewer(QWidget *parent, string molfile) :
 
 void MolViewer::setMolFilePath(string mol_file_path){
     MolFilePath = mol_file_path;
+
 }
 
 QVector4D MolViewer::ScreenCoordinate2_WorldCoordinate(int xpos, int ypos){
@@ -108,7 +102,6 @@ void MolViewer::ray_cating(int xpos, int ypos){
     update();
 }
 
-
 MolViewer::~MolViewer(){
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
@@ -129,16 +122,10 @@ void MolViewer::resizeGL(int w, int h){
 
 void MolViewer::paintGL(){
     if(!MolFilePath.empty() && MolFilePath != recentFile){
-        for(const unsigned int vao:vaos){
-            glDeleteVertexArrays(1, &vao);
-        }
-        for(const unsigned int vbo:vbos){
-            glDeleteBuffers(1, &vbo);
-        }
-        glDeleteBuffers(1, &EBO);
+        clear_all();
 
         string suffix = MolFilePath.substr(MolFilePath.size()-4);
-        MiniRDKit::RWMol* mol(nullptr);
+
         if(suffix == ".mol"){
             mol = MiniRDKit::MolFileToMol(MolFilePath);
         }else if(suffix == "mol2"){
@@ -178,7 +165,7 @@ void MolViewer::paintGL(){
         vector<Cylinder* > cylinders;
 
         // 构建原子信息
-        Sphere hydrogen(0, 0.1f, 4, 2, glm::vec3(0.0f, 0.0f, 0.0f), GREEN);
+        Sphere hydrogen(0, 0.1f, 8, 4, glm::vec3(0.0f, 0.0f, 0.0f), GREEN);
         Sphere carbon(0, 0.2f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), RED);
         Sphere nitrogen(0, 0.24f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), GOLD1);
         Sphere oxygen(0, 0.28f, 16, 8, glm::vec3(0.0f, 0.0f, 0.0f), BLUE);
@@ -217,7 +204,6 @@ void MolViewer::paintGL(){
             }
             balls.push_back(ball);
         }
-
         // 构建键信息
         for(auto bond = mol->beginBonds(); bond!=mol->endBonds(); ++bond){
             // cout << (*bond)->getBeginAtomIdx() << "," << (*bond)->getEndAtomIdx() << "\n";
@@ -225,9 +211,47 @@ void MolViewer::paintGL(){
             int end_atom_idx = (*bond)->getEndAtomIdx();
             glm::vec3 start_point = glm::vec3(positions[start_atom_idx*4],  positions[start_atom_idx*4+1],  positions[start_atom_idx*4+2]);
             glm::vec3 end_point = glm::vec3(positions[end_atom_idx*4],  positions[end_atom_idx*4+1],  positions[end_atom_idx*4+2]);
+            BondType bond_type = (*bond)->getBondType();
 
-            Cylinder* cylinder = new Cylinder(end_point, start_point, 0.05,0.05,16,1, WRITE);
-            cylinders.push_back(cylinder);
+            if(bond_type == MiniRDKit::Bond::DOUBLE){
+                build_Keys(MiniRDKit::Bond::DOUBLE, end_point, start_point, cylinders);
+
+                // }else if(bond_type == MiniRDKit::Bond::TRIPLE){
+
+            }else if (bond_type == MiniRDKit::Bond::AROMATIC){
+                auto start_atom = aromatic_map.find(start_atom_idx);
+                auto end_atom = aromatic_map.find(end_atom_idx);
+
+                if(start_atom == aromatic_map.end() && end_atom == aromatic_map.end()){
+                    build_Keys(MiniRDKit::Bond::SINGLE, end_point, start_point, cylinders);
+                    aromatic_map.insert({start_atom_idx, false});
+                    aromatic_map.insert({end_atom_idx, false});
+                }else if(start_atom == aromatic_map.end() && end_atom->second){
+                    build_Keys(MiniRDKit::Bond::SINGLE, end_point, start_point, cylinders);
+                    aromatic_map.insert({start_atom_idx, false});
+                }else if(start_atom == aromatic_map.end() && !end_atom->second){
+                    build_Keys(MiniRDKit::Bond::DOUBLE, end_point, start_point, cylinders);
+                    aromatic_map.insert({start_atom_idx, true});
+                    aromatic_map[end_atom_idx] = true;
+                }else if(end_atom == aromatic_map.end() && start_atom->second){
+                    build_Keys(MiniRDKit::Bond::SINGLE, end_point, start_point, cylinders);
+                    aromatic_map.insert({end_atom_idx, false});
+                }else if(end_atom == aromatic_map.end() && !start_atom->second){
+                    build_Keys(MiniRDKit::Bond::DOUBLE, end_point, start_point, cylinders);
+                    aromatic_map.insert({end_atom_idx, true});
+                    aromatic_map[start_atom_idx] = true;
+                }else if(start_atom != aromatic_map.end() && end_atom != aromatic_map.end() && (start_atom->second || end_atom->second)){
+                    build_Keys(MiniRDKit::Bond::SINGLE, end_point, start_point, cylinders);
+                    aromatic_map[start_atom_idx] = true;
+                    aromatic_map[end_atom_idx] = true;
+                }else{
+                    build_Keys(MiniRDKit::Bond::DOUBLE, end_point, start_point, cylinders);
+                    aromatic_map[start_atom_idx] = true;
+                    aromatic_map[end_atom_idx] = true;
+                }
+            }else{
+                build_Keys(MiniRDKit::Bond::SINGLE, end_point, start_point, cylinders);
+            }
         }
 
         float system_center_x = 0.0f;
@@ -251,7 +275,6 @@ void MolViewer::paintGL(){
             build_GLobject(cylinder, total_vertexcount, total_indexcount);
             objects.push_back(cylinder);
         }
-
         recentFile = MolFilePath;
         balls_copy = balls;
     }
@@ -260,7 +283,7 @@ void MolViewer::paintGL(){
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // view/projection transformations
-    projection = QMatrix4x4(glm::value_ptr(glm::perspective(glm::radians(camera->zoom), WIDTH/HEIGHT, 0.1f, 100.0f))).transposed();
+    projection = glm2QMatrix(glm::perspective(glm::radians(camera->zoom), WIDTH/HEIGHT, 0.1f, 100.0f));
     global_projection = projection;
 
     QMatrix4x4 view = camera->getViewMatrix();
@@ -288,9 +311,9 @@ void MolViewer::paintGL(){
         molShader.setUniformValue("viewPos", camera->position);
 
         glDrawElements(GL_TRIANGLES, total_indexcount*3, GL_UNSIGNED_INT, (void*)0);
-
         obj_index+=1;
     }
+    create_CoordinateSystem();
 }
 
 void MolViewer::keyPressEvent(QKeyEvent *event){
@@ -319,6 +342,27 @@ void MolViewer::mousePressEvent(QMouseEvent *event){
     }else if(event->button() == Qt::MidButton){
 
     }
+}
+
+void MolViewer::mouseDoubleClickEvent(QMouseEvent *event){
+    cout << "Double Clicked!" << endl;
+    if(all_selected){
+        for(Sphere* ball: balls_copy){
+            Sphere* sphere = new Sphere(*ball);
+            objects.erase(objects.begin()+ball->getNo());
+            objects.insert(objects.begin()+ball->getNo(), sphere);
+        }
+        all_selected = false;
+    }else{
+        all_selected = true;
+        for(Sphere* ball: balls_copy){
+            Sphere* sphere = new Sphere(ball->getNo(), ball->getRadius(), ball->getSectorCount(), ball->getStackCount(), ball->getPosition(), WHITE);
+            objects.erase(objects.begin()+ball->getNo());
+            objects.insert(objects.begin()+ball->getNo(), sphere);
+        }
+    }
+
+    update();
 }
 
 void MolViewer::mouseReleaseEvent(QMouseEvent *event){
@@ -369,6 +413,10 @@ QVector3D MolViewer::glm2Qvector(glm::vec3 vec){
     return vector;
 }
 
+QMatrix4x4 MolViewer::glm2QMatrix(glm::mat4 matrix){
+    return QMatrix4x4(glm::value_ptr(matrix)).transposed();
+}
+
 bool MolViewer::createShader(){
     bool success = molShader.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/lightedsphere.vs");
     if (!success) {
@@ -388,6 +436,28 @@ bool MolViewer::createShader(){
     }
 
     return success;
+}
+
+void MolViewer::clear_all(){
+    for(const unsigned int vao:vaos){
+        glDeleteVertexArrays(1, &vao);
+    }
+    vaos.clear();
+    for(const unsigned int vbo:vbos){
+        glDeleteBuffers(1, &vbo);
+    }
+    vbos.clear();
+    glDeleteBuffers(1, &EBO);
+
+    mol = nullptr;
+    objects.clear();
+    total_vertexcount = 0;
+    total_indexcount = 0;
+
+    aromatic_map.clear();
+
+    firstMouse = true;
+    all_selected = false;
 }
 
 uint MolViewer::loadTexture(const QString& path){
@@ -456,8 +526,80 @@ void MolViewer::build_GLobject(GraphicObject *object, int &total_vertexcount, in
     glEnableVertexAttribArray(1);
 }
 
-void MolViewer::printMatrx(const QMatrix4x4 matrix){
-    cout << "print matrix:" << "\n";
-    for(int i=0; i<4; i++)
-        cout << matrix.row(i).x() << "," << matrix.row(i).y() << "," <<matrix.row(i).z() << "," <<matrix.row(i).w() << "," <<endl;
+void MolViewer::build_Keys(BondType bondtype, const glm::vec3 end_point, const glm::vec3 start_point, vector<Cylinder* >& cylinders){
+    glm::vec3 key_vector = end_point - start_point;
+    glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 move_vector = glm::normalize(glm::cross(key_vector, up_vector));
+    move_vector *= 0.05;
+    if(bondtype == MiniRDKit::Bond::DOUBLE){
+        Cylinder* cylinder1 = new Cylinder(end_point+move_vector, start_point+move_vector, 0.025,0.025,16,1, RED);
+        Cylinder* cylinder2 = new Cylinder(end_point-move_vector, start_point-move_vector, 0.025,0.025,16,1, BLUE);
+        cylinders.push_back(cylinder1);
+        cylinders.push_back(cylinder2);
+    }else{
+        Cylinder* cylinder = new Cylinder(end_point, start_point, 0.05,0.05,16,1, WRITE);
+        cylinders.push_back(cylinder);
+    }
+}
+
+void MolViewer::create_CoordinateSystem(){
+    float line[(21/5+1)*(21/5+1)*2*2*6];
+
+    int line_no = 0;
+    for(int i=-10.0; i<11.0; i+=5){
+        for(int j=-10.0; j<11.0; j+=5){
+            line[line_no*6] = i;
+            line[line_no*6+1] = j;
+            line[line_no*6+2] = -10.0;
+            line[line_no*6+3] = i;
+            line[line_no*6+4] = j;
+            line[line_no*6+5] = 10.0;
+            line_no++;
+        }
+        for(int k=-10.0; k<11.0; k+=5){
+            line[line_no*6] = i;
+            line[line_no*6+1] = -10.0;
+            line[line_no*6+2] = k;
+            line[line_no*6+3] = i;
+            line[line_no*6+4] = 10.0;
+            line[line_no*6+5] = k;
+            line_no++;
+        }
+    }
+
+    for(int k=-10.0; k<11.0; k+=5){
+        for(int i=-10.0; i<11.0; i+=5){
+            line[line_no*6] = i;
+            line[line_no*6+1] = -10.0;
+            line[line_no*6+2] = k;
+            line[line_no*6+3] = i;
+            line[line_no*6+4] = 10.0;
+            line[line_no*6+5] = k;
+            line_no++;
+        }
+        for(int j=-10.0; j<11.0; j+=5){
+            line[line_no*6] = -10.0;
+            line[line_no*6+1] = j;
+            line[line_no*6+2] = k;
+            line[line_no*6+3] = 10.0;
+            line[line_no*6+4] = j;
+            line[line_no*6+5] = k;
+            line_no++;
+        }
+    }
+
+    unsigned int coordinateVAO, coordinateVBO;
+    glGenVertexArrays(1, &coordinateVAO);
+    glGenBuffers(1, &coordinateVBO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, coordinateVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(line), line, GL_STATIC_DRAW);
+    glBindVertexArray(coordinateVAO);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, false, 3*sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    molShader.setUniformValue("objectColor", glm2Qvector(WHITE));
+    glLineWidth(1.0);
+    glDrawArrays(GL_LINES, 0, sizeof(line)/sizeof(float));
 }

@@ -82,6 +82,8 @@ public:
 
     glm::vec3 getColor() const { return color; };
 
+    int getNo() const { return No; };
+
 private:
     // member functions
     void clearArrays();
@@ -98,6 +100,7 @@ private:
                                          float x2, float y2, float z2,
                                          float x3, float y3, float z3);
 
+    int No = -1;
     // memeber vars
     float baseRadius;
     float topRadius;

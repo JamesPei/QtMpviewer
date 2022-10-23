@@ -26,11 +26,14 @@ public:
 
     virtual int getInterleavedStride() const = 0;
 
+    virtual int getNo() const = 0;
+
     virtual glm::vec3 getColor() const = 0;
 
-    void setColor(glm::vec3 new_color) { color = new_color; };
+    void setColor(glm::vec3 new_color) { this->color = new_color; };
 
 private:
+    int No;
     vector<float> vertices;
     vector<unsigned int> indices;
     vector<float> interleavedVertices;

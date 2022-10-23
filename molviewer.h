@@ -28,6 +28,9 @@ using namespace std;
 
 class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
     Q_OBJECT
+
+    typedef MiniRDKit::Bond::BondType BondType;
+
     public:
         explicit MolViewer(QWidget *parent = nullptr, string molfile = "");
         ~MolViewer() Q_DECL_OVERRIDE;
@@ -36,7 +39,7 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
 
         QVector3D glm2Qvector(glm::vec3 vec);
 
-        void printMatrx(QMatrix4x4 matrix);
+        QMatrix4x4 glm2QMatrix(glm::mat4 matrix);
 
     protected:
         void initializeGL()  Q_DECL_OVERRIDE;
@@ -46,29 +49,35 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
         void keyPressEvent(QKeyEvent *event) Q_DECL_OVERRIDE;
         void keyReleaseEvent(QKeyEvent *event) Q_DECL_OVERRIDE;
         void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+        void mouseDoubleClickEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
         void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
         void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+
         void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
 
         QVector4D ScreenCoordinate2_WorldCoordinate(int xpos, int ypos);
         void ray_cating(int xpos, int ypos);
+        void create_CoordinateSystem();     // 绘制坐标系
 
     private:
         bool createShader();
+        void clear_all();
         uint loadTexture(const QString& path);
         void build_GLobject(GraphicObject* object, int& total_vertexcount, int& total_indexcount);
+        void build_Keys(BondType bondtype, const glm::vec3 end_point, const glm::vec3 start_point, vector<Cylinder* >& cylinders);
 
     private:
         QOpenGLShaderProgram molShader;
         string MolFilePath;
         string recentFile = "";
         QFileDialog* fileOperator;
-        MiniRDKit::RWMol* mol;
+        MiniRDKit::RWMol* mol = nullptr;
 
         QTimer* m_pTimer = nullptr;
         int     m_nTimeValue = 0;
         qint64 last_LeftButton_click_time;
         bool firstMouse = true;
+        bool all_selected = false;
 
         uint VAO, VBO, EBO;
         uint diffuseMap, specularMap;
@@ -98,7 +107,9 @@ class MolViewer: public QOpenGLWidget, protected QOpenGLFunctions_4_2_Core{
         QMatrix4x4 global_projection;
         QMatrix4x4 model;
 
-        QVector3D lightColor = QVector3D(2.0f, 2.0f, 1.0f);
+        QVector3D lightColor = QVector3D(1.0f, 1.0f, 1.0f);
+
+        map<int, bool> aromatic_map;
 
         template<class T, class... Args>
         std::unique_ptr<T> make_unique(Args&&... args){

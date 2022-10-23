@@ -18,11 +18,16 @@ MainWindow::~MainWindow(){
 
 void MainWindow::on_actionopen_triggered(){
     QFileDialog fileOperator;
-    fileName = fileOperator.getOpenFileName(this);
-    if (!fileName.isEmpty()){
-        messagebox.setText(fileName+" opened");
+    fileName = fileOperator.getOpenFileName(this, tr("Open File"),  home, tr("mol/mol2/pdb (*.mol *.mol2 *.pdb)"));
+    if (fileName.isEmpty()){
+        messagebox.setText("No file found!");
         messagebox.exec();
     }
     viewer->setMolFilePath(fileName.toStdString());
     viewer->update();
 }
+
+void MainWindow::on_actionadd_triggered(){
+
+}
+
